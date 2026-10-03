@@ -1,0 +1,5 @@
+node_modules/
+generated-images/
+.generated-images/
+.env
+*.log

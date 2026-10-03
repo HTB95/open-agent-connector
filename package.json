@@ -1,0 +1,48 @@
+{
+  "name": "open-agent-connector",
+  "version": "0.4.0",
+  "description": "Zero-dependency MCP server that keeps Claude as the lead engineer while delegating web search, page reading, text chores and multi-model image generation to helper models behind any OpenAI-compatible endpoint.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "claude-code",
+    "openai-compatible",
+    "llm-gateway",
+    "litellm",
+    "openrouter",
+    "image-generation",
+    "web-search",
+    "agents"
+  ],
+  "homepage": "https://github.com/HTB95/open-agent-connector#readme",
+  "bugs": {
+    "url": "https://github.com/HTB95/open-agent-connector/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HTB95/open-agent-connector.git"
+  },
+  "license": "MIT",
+  "author": "htb95",
+  "type": "module",
+  "bin": {
+    "open-agent-connector": "bin/server.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "examples/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node bin/server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "doctor": "node bin/doctor.mjs"
+  },
+  "engines": {
+    "node": ">=18.17"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "helpers": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "github:HTB95/open-agent-connector"],
+      "env": {
+        "OAC_BASE_URL": "${OAC_BASE_URL:-}",
+        "OAC_API_KEY": "${OAC_API_KEY:-}",
+        "OAC_TEXT_MODELS": "${OAC_TEXT_MODELS:-}",
+        "OAC_IMAGE_MODELS": "${OAC_IMAGE_MODELS:-}",
+        "OAC_JUDGE_MODEL": "${OAC_JUDGE_MODEL:-}",
+        "OAC_SEARCH_PROVIDERS": "${OAC_SEARCH_PROVIDERS:-}",
+        "OAC_SEARCH_MODEL": "${OAC_SEARCH_MODEL:-}",
+        "OAC_FETCH_PROVIDERS": "${OAC_FETCH_PROVIDERS:-}",
+        "OAC_IMAGE_OUT_DIR": "${OAC_IMAGE_OUT_DIR:-.generated-images}"
+      }
+    }
+  }
+}
