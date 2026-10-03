@@ -5,6 +5,12 @@ Newest first. Each entry records WHY, not just WHAT. Past entries are never edit
 ## [Unreleased]
 
 ### Repository
+- `main` is now the default branch. The development branch `claude/admiring-fermi-j85p6m` is
+  being removed, so the line below about history staying there no longer holds once it is gone.
+  WHY: GitHub visibility is per repository, not per branch. Making the repo public would also
+  publish every other branch, so the owner chose to keep only `main` and drop the development
+  history. Projects that ran `init --ref claude/admiring-fermi-j85p6m` must run `init` again
+  without `--ref`.
 - Added a `main` branch as one squashed commit of the 0.4.0 tree. The full development history
   stays on the `claude/admiring-fermi-j85p6m` branch.
   WHY: the owner wants a clean default branch for the public release. The early history holds
