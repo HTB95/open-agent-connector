@@ -5,6 +5,12 @@ Newest first. Each entry records WHY, not just WHAT. Past entries are never edit
 ## [Unreleased]
 
 ### Repository
+- The repository is now public. The development branch `claude/admiring-fermi-j85p6m` has been
+  deleted, and `main` is the only branch.
+  WHY: this finishes the public release. The owner deleted the branch and changed the visibility
+  in the GitHub UI, because the cloud session cannot change repository settings or delete refs.
+  Verified: `npx -y github:HTB95/open-agent-connector` started from a clean npm cache and answered
+  MCP `initialize` (open-agent-connector 0.4.0) and `tools/list` with all five tools.
 - `main` is now the default branch. The development branch `claude/admiring-fermi-j85p6m` is
   being removed, so the line below about history staying there no longer holds once it is gone.
   WHY: GitHub visibility is per repository, not per branch. Making the repo public would also
