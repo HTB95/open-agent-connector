@@ -23,6 +23,22 @@ export function pickDefaultTextModel(ids) {
 
 /**
  * @SecondBrain
+ * @Description Returns the configured ids that GET /models does not advertise. Returns [] when
+ *   the advertised list is empty (discovery failed or the backend has no /models), because then
+ *   nothing can be concluded.
+ * @History:
+ *   [2026-10-03 11] [Created] - User feedback: a typo'd id (e.g. `ag/gemini-2.5-flash` when the
+ *     gateway only had `xkr/google/gemini-2.5-flash`) sat in OAC_TEXT_MODELS and failed on every
+ *     failover; list_helper_models/doctor should point it out.
+ */
+export function unadvertised(ids, available) {
+  if (!available.length) return [];
+  const known = new Set(available);
+  return [...new Set(ids.filter(Boolean))].filter((id) => !known.has(id));
+}
+
+/**
+ * @SecondBrain
  * @Description Resolves (and caches) the concrete model ids for every role. Env config wins;
  *   GET /models is called once per process to auto-pick a text model and to power
  *   list_helper_models.

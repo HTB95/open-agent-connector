@@ -5,7 +5,8 @@
 [![Dependencies: 0](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
 [![MCP](https://img.shields.io/badge/MCP-stdio-purple.svg)](https://modelcontextprotocol.io)
 
-**Keep Claude as the lead engineer and hand the chores to cheaper models.**
+**Keep Claude as the lead engineer and hand the chores to cheaper models, to cut Claude Code token
+costs.**
 
 `open-agent-connector` is a zero-dependency [MCP](https://modelcontextprotocol.io) server. It gives
 Claude (Claude Code, Claude Desktop) a small set of tools that hand work to **helper models behind
@@ -195,18 +196,50 @@ OAC_TEXT_MODELS=qwen3:8b
 5. **Small tool surface.** Five tools with short schemas, because tool definitions are re-sent on
    every turn.
 
+### When it pays off
+
+Delegating has a cost too: Claude still writes the prompt and reads the answer. It pays off when
+the helper's share of the work is much bigger than that, for example:
+
+| Worth delegating | Do it yourself |
+|---|---|
+| Summarising a long page, a changelog or search results | A fact you already know |
+| Generating and ranking several images | Edits of a few lines |
+| Brainstorming or drafting large boilerplate | Anything that needs the repo's context |
+
+No measured before/after numbers are published yet. When the backend reports usage, `ask_agent`
+prints each helper's token in/out next to its answer, so you can compare a delegated task against
+doing it in Claude. If you measure real savings, a PR with the numbers and the method is welcome.
+
+### How it compares
+
+There are other MCP servers that let Claude ask another model for an opinion, and routers that
+swap the model behind Claude Code. This project focuses on chores rather than second opinions:
+
+- **Image generation with several models in parallel**, with an optional judge model so Claude
+  only opens the top one or two images.
+- **`web_fetch` with a `question`**: the helper reads the page and Claude only gets the answer.
+- **Model ids per role** (`text`, `image`, `judge`, `search`) on any OpenAI-compatible gateway.
+- **A ready delegation policy** that `init` writes into `CLAUDE.md`, plus a one-command setup
+  that works the same locally and in Claude Code cloud sessions.
+
 ## Security
 
 - **Don't commit keys.** Keys belong in your shell profile or in the cloud environment settings.
   `.mcp.json` only holds `${VAR}` references.
 - If your gateway is reachable from the internet, put it behind **HTTPS** and require an API key.
   Without TLS, the bearer key travels as plain text.
-- Helpers never touch your repository. They only see what Claude puts in a prompt.
+- Helpers never touch your repository. They only see what Claude puts in a prompt, and the
+  delegation policy tells Claude never to put secrets or `.env` contents there.
 - See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 ## Limitations
 
 - Only the stdio transport is supported. The claude.ai web chat (remote MCP connectors) is not.
+  A remote MCP version (for example on a serverless platform) is an idea under consideration and has
+  not been tried. It would keep keys on the server and skip the `npx` download per session, but
+  `generate_images` would have to return image URLs (for example from object storage) instead of
+  local file paths.
 - The automated tests run against a **mock** gateway (`test/mock-router.mjs`), not real providers.
   Use `doctor` to check your own backend.
 - Native search and fetch endpoints are not part of the OpenAI API. They follow the request and

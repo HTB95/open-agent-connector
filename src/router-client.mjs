@@ -39,6 +39,28 @@ export function parseSse(text) {
 
 /**
  * @SecondBrain
+ * @Description Maps well-known gateway / reverse-proxy failures to a one-line fix, appended to
+ *   the error so Claude (and the user) can act without guessing. Returns '' when nothing fits.
+ * @History:
+ *   [2026-10-03 11] [Created] - User feedback: proxy errors (1010, 524) and upstream 502s cost
+ *     several debugging rounds when the gateway sat behind a reverse proxy / CDN.
+ */
+export function gatewayHint(status, body = '') {
+  if (status === 403 && /\b1010\b/.test(body)) {
+    return 'A reverse proxy / CDN in front of the gateway rejected this client (error 1010, bot or browser check). Allow User-Agent "open-agent-connector" or skip that check for the API path.';
+  }
+  if (status === 524) {
+    return 'A reverse proxy in front of the gateway timed out waiting for it (HTTP 524). Raise the proxy timeout, or use a direct hostname or a tunnel for long calls such as image generation.';
+  }
+  if (status === 401) return 'Check OAC_API_KEY.';
+  if (status === 502 || status === 503 || status === 504) {
+    return 'The upstream provider behind the gateway failed. Try another model id and check the gateway dashboard.';
+  }
+  return '';
+}
+
+/**
+ * @SecondBrain
  * @Description Minimal fetch wrapper around any OpenAI-compatible API: /chat/completions,
  *   /responses, /images/generations, /models plus optional native search/fetch endpoints
  *   (paths configurable, e.g. 9router's /search and /web/fetch).
@@ -50,6 +72,8 @@ export function parseSse(text) {
  *     dashboard showed images default to SSE when Accept has text/event-stream.
  *   [2026-10-03 09] [Updated] - Backend-agnostic: clear error when OAC_BASE_URL is unset,
  *     configurable search/fetch paths, vendor-neutral error messages.
+ *   [2026-10-03 11] [Updated] - Errors carry a gatewayHint(); sends a User-Agent header, since
+ *     some reverse proxies / CDNs run bot checks that reject requests without a clear client id.
  */
 export class RouterClient {
   constructor(config, fetchImpl = globalThis.fetch) {
@@ -58,7 +82,7 @@ export class RouterClient {
   }
 
   headers(accept = 'application/json, text/event-stream') {
-    const h = { 'Content-Type': 'application/json', Accept: accept };
+    const h = { 'Content-Type': 'application/json', Accept: accept, 'User-Agent': 'open-agent-connector' };
     if (this.config.apiKey) h.Authorization = `Bearer ${this.config.apiKey}`;
     return h;
   }
@@ -84,7 +108,8 @@ export class RouterClient {
     }
     const text = await res.text();
     if (!res.ok) {
-      throw new RouterError(`${method} ${path} -> HTTP ${res.status}: ${text.slice(0, 500)}`, {
+      const hint = gatewayHint(res.status, text);
+      throw new RouterError(`${method} ${path} -> HTTP ${res.status}: ${text.slice(0, 500)}${hint ? `\nHint: ${hint}` : ''}`, {
         status: res.status,
         body: text,
       });

@@ -1,6 +1,7 @@
 import { askAgentTool, clip } from './text.mjs';
 import { webFetchTool, webSearchTool } from './web.mjs';
 import { generateImagesTool } from './images.mjs';
+import { unadvertised } from '../models.mjs';
 
 /**
  * @SecondBrain
@@ -11,6 +12,8 @@ import { generateImagesTool } from './images.mjs';
  *   [2026-10-03 07] [Updated] - Also prints search/fetch provider order; registered web_fetch.
  *   [2026-10-03 09] [Refactored] - Vendor-neutral: no cx/ ag/ filter; lists every advertised id
  *     (clipped) and points at the OAC_* variable behind each role.
+ *   [2026-10-03 11] [Updated] - Warns about configured model ids that /models does not advertise
+ *     (user feedback: an id with the wrong prefix made one failover slot fail on every call).
  */
 export const listModelsTool = {
   definition: {
@@ -34,8 +37,13 @@ export const listModelsTool = {
     const availText = avail.length
       ? avail.join(', ')
       : `(none — ${ctx.models.discoveryError ?? 'GET /models returned no ids'})`;
+    // Search provider ids are not LLMs, so only model roles are checked.
+    const missing = unadvertised([...m.text, ...m.images, m.judge, m.search], avail);
+    const warn = missing.length
+      ? `\n\n⚠️ Configured but not advertised by GET /models (check the spelling/prefix, or the call will fail): ${missing.join(', ')}`
+      : '';
     return {
-      text: clip(`Backend: ${config.baseUrl || '(OAC_BASE_URL not set)'}\nRoles:\n${roles.join('\n')}\n\nAdvertised models (${avail.length}):\n${availText}`, config.maxResultChars),
+      text: clip(`Backend: ${config.baseUrl || '(OAC_BASE_URL not set)'}\nRoles:\n${roles.join('\n')}${warn}\n\nAdvertised models (${avail.length}):\n${availText}`, config.maxResultChars),
     };
   },
 };

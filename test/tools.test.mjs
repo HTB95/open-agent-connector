@@ -4,9 +4,9 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createContext } from '../src/context.mjs';
-import { pickDefaultTextModel } from '../src/models.mjs';
+import { pickDefaultTextModel, unadvertised } from '../src/models.mjs';
 import { isOpenAiStyleImageModel } from '../src/tools/images.mjs';
-import { parseSse } from '../src/router-client.mjs';
+import { gatewayHint, parseSse } from '../src/router-client.mjs';
 import { clip } from '../src/tools/text.mjs';
 import { TOOLS } from '../src/tools/index.mjs';
 import { startMockRouter } from './mock-router.mjs';
@@ -239,6 +239,30 @@ test('text model is auto-picked from GET /models when OAC_TEXT_MODELS is empty',
     const list = await tool('list_helper_models').handler(ctx);
     assert.match(list.text, /text \(OAC_TEXT_MODELS, auto-picked\): cx\/gpt-5\.4/);
     assert.match(list.text, /Advertised models \(8\)/);
+  } finally {
+    await router.close();
+  }
+});
+
+test('gatewayHint maps proxy and upstream failures; unadvertised flags unknown ids', () => {
+  assert.match(gatewayHint(403, 'error code: 1010'), /error 1010/);
+  assert.equal(gatewayHint(403, 'forbidden'), '');
+  assert.match(gatewayHint(524, ''), /timed out/);
+  assert.match(gatewayHint(502, ''), /another model id/);
+  assert.match(gatewayHint(401, ''), /OAC_API_KEY/);
+  assert.equal(gatewayHint(500, ''), '');
+  assert.deepEqual(unadvertised(['a', 'b', null, 'b'], ['a']), ['b']);
+  assert.deepEqual(unadvertised(['a'], []), []); // no /models data -> no verdict
+});
+
+test('list_helper_models warns about configured ids the backend does not advertise', async () => {
+  const { router, ctx } = await setup({}, { OAC_TEXT_MODELS: 'cx/gpt-5.5,ag/gemini-2.5-flash' });
+  try {
+    const list = await tool('list_helper_models').handler(ctx);
+    const warning = list.text.split('\n').find((l) => l.startsWith('⚠️'));
+    assert.match(warning, /ag\/gemini-2\.5-flash/);
+    assert.match(warning, /cx\/gpt-image-2\.5/); // image model missing from the mock's /models
+    assert.doesNotMatch(warning, /cx\/gpt-5\.5\b/); // advertised, so not flagged
   } finally {
     await router.close();
   }

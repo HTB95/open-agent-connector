@@ -72,6 +72,8 @@ async function responsesSearch(ctx, model, query, focus) {
  *     /v1/search (provider "antigravity") first; Codex becomes the fallback.
  *   [2026-10-03 09] [Refactored] - Both live routes are now opt-in config, not hard-coded
  *     vendors, so the tool works (degraded, clearly labelled) on plain chat-only backends.
+ *   [2026-10-03 11] [Updated] - Description tells Claude to use its own search for current facts
+ *     when the result is not live (user feedback: non-live answers must not stand in for fresh data).
  */
 export const webSearchTool = {
   definition: {
@@ -79,7 +81,7 @@ export const webSearchTool = {
     description:
       'Live web search done by helpers. Returns a short grounded answer + source URLs instead of raw pages, saving ' +
       'Claude tokens. Use for docs, error messages, versions, news. If the result starts with "NOT A LIVE SEARCH", ' +
-      'treat it as possibly outdated.',
+      'treat it as possibly outdated and use your own search for current facts.',
     inputSchema: {
       type: 'object',
       properties: {

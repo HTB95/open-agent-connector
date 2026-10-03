@@ -13,7 +13,9 @@
     "openrouter",
     "image-generation",
     "web-search",
-    "agents"
+    "agents",
+    "delegation",
+    "token-saving"
   ],
   "homepage": "https://github.com/HTB95/open-agent-connector#readme",
   "bugs": {

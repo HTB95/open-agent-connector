@@ -95,6 +95,25 @@ gateway's own tunnel feature.
 > Never paste API keys into a chat. Put them in environment variables.
 > Generated images are saved in the repo's `.generated-images/` folder, so you can open them from the app.
 
+> **Environment variables are read when a session starts.** After you add or change one, start a
+> **new** cloud session. A running session keeps the old values, so the change looks like it did
+> nothing.
+
+### Gateway behind a reverse proxy or CDN
+
+If you expose a self-hosted gateway through a reverse proxy or CDN of your choice:
+
+- **Route the hostname straight to the gateway's port** with the proxy's own routing rule or a
+  tunnel. Edge-function proxies often cannot reach a bare IP address or an unusual port.
+- **Error 1010** (HTTP 403, body `error code: 1010`): a bot or browser check rejected the client.
+  Skip that check for the API hostname or path. The connector sends
+  `User-Agent: open-agent-connector`, which you can match in the rule.
+- **HTTP 524**: the proxy stopped waiting for the gateway (often around 100 seconds). Image
+  generation can take longer. Raise the proxy timeout, use a direct hostname or a tunnel for the
+  gateway, or pick faster image models.
+
+The connector appends a `Hint:` line to these errors.
+
 ## C. Claude Desktop (Chat tab) and claude.ai
 
 - **Claude Desktop, Chat tab:** add the server in Settings → Developer → Edit Config
@@ -147,6 +166,11 @@ or restart Claude Code (local).
 | Symptom | Cause / fix |
 |---|---|
 | `/mcp` doesn't list `helpers` | You haven't started a new session since `init`, or (in the cloud) `.mcp.json` isn't committed. |
+| Changed an environment variable but nothing changed | Variables load when a session starts. Start a new session (cloud) or restart Claude Code (local). |
+| `⚠️ Configured but not advertised by GET /models` | A model id in `OAC_*_MODELS` is misspelled or has the wrong prefix (for example `ag/…` when the gateway exposes `xkr/google/…`). Copy the exact id from the advertised list. Calls to that id will fail. |
+| `HTTP 403 … error code: 1010` | A proxy's bot check rejected the client. See [Gateway behind a reverse proxy or CDN](#gateway-behind-a-reverse-proxy-or-cdn). |
+| `HTTP 524` | The proxy timed out waiting for the gateway, usually on image generation. Same section as above. |
+| `HTTP 502` from one model | That model's upstream provider failed. `ask_agent` with `model: "auto"` moves to the next text model by itself. For images, check the provider in your gateway dashboard. |
 | `OAC_BASE_URL is not set` | The variable isn't in the environment Claude Code was launched from. Restart the terminal or app after `setx` or editing your profile. |
 | `Cannot reach the gateway at …` | Wrong URL, or (in the cloud) no public HTTPS URL or the domain is missing from *Allowed domains*. |
 | `HTTP 401` | `OAC_API_KEY` is missing or invalid. |

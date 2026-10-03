@@ -4,6 +4,40 @@ Newest first. Each entry records WHY, not just WHAT. Past entries are never edit
 
 ## [Unreleased]
 
+### Added
+- `list_helper_models` (and so `doctor`) warns about configured model ids that `GET /models`
+  does not advertise.
+  WHY: user feedback. `OAC_TEXT_MODELS` held `ag/gemini-2.5-flash` while the gateway only exposed
+  `xkr/google/gemini-2.5-flash`, so that failover slot would fail on every call.
+- HTTP errors now end with a `Hint:` line for reverse-proxy error 1010 (bot check), 524 (proxy
+  timeout), upstream 502/503/504 and 401. Requests send `User-Agent: open-agent-connector`, which
+  a proxy skip rule can match.
+  WHY: user feedback. These errors took several rounds to diagnose with a gateway behind a proxy.
+  The wording names no proxy vendor: which proxy or CDN to use is the user's choice.
+- Docs: a "Gateway behind a reverse proxy or CDN" section (route straight to the gateway port,
+  1010, 524), a note that environment variables only load when a session starts, new troubleshooting
+  rows, and README sections "When it pays off", "How it compares" and a remote-MCP idea under
+  Limitations (marked as not tried).
+  WHY: user feedback that troubleshooting from real setups and an honest positioning matter more to
+  the community than another "call a different model" server. No savings numbers were added,
+  because none have been measured yet.
+
+### Changed
+- Delegation policy (`examples/CLAUDE.md`, written by `init`):
+  - for current facts, discard a `NOT A LIVE SEARCH` result and use Claude's own search
+  - images: helper drafts the prompt, `review: "judge"`, then a trademark/character/real-person
+    check before anything enters the repo
+  - on a helper failure, retry once with a different model id, never the same call
+  - never send secrets, `.env` contents or uncleared proprietary code to a helper
+  The server instructions and the `web_search` description carry the secrets and live-search
+  rules too, for repos that never ran `init`.
+  WHY: user feedback after using the connector in practice. No environment variable or tool
+  parameter was renamed (the user asked to avoid renames). Re-run `init` to refresh the policy.
+
+### Verified
+- `npm test`: 23/23 pass against the mock gateway. The proxy hints are tested with synthetic
+  status codes, not against a real proxy.
+
 ### Repository
 - Added `.github/workflows/release.yml`, run by hand with a `version` input. It runs the tests,
   checks the version against `package.json`, tags `v<version>` and publishes a GitHub release
