@@ -5,6 +5,11 @@ Newest first. Each entry records WHY, not just WHAT. Past entries are never edit
 ## [Unreleased]
 
 ### Repository
+- Added `.github/workflows/release.yml`, run by hand with a `version` input. It runs the tests,
+  checks the version against `package.json`, tags `v<version>` and publishes a GitHub release
+  with the matching CHANGELOG section as notes.
+  WHY: the owner asked for the v0.4.0 release to be published for them. The cloud session cannot
+  push tags, but it can start a workflow. Later versions are released the same way.
 - The repository is now public. The development branch `claude/admiring-fermi-j85p6m` has been
   deleted, and `main` is the only branch.
   WHY: this finishes the public release. The owner deleted the branch and changed the visibility

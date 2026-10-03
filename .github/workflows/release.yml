@@ -1,0 +1,46 @@
+# @SecondBrain
+# @Description Manual release: tests, then tags `v<version>` on the chosen ref and publishes a
+#   GitHub release whose notes are the matching `## [<version>]` section of CHANGELOG.md.
+# @History:
+#   [2026-10-03 10] [Created] - Owner asked for the v0.4.0 release to be published; the cloud
+#     session cannot push tags, so releases are cut from Actions (also reusable for later versions).
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version without the leading v (must match package.json and a CHANGELOG heading)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm test
+      - name: Check version and extract notes
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          pkg=$(node -p "require('./package.json').version")
+          if [ "$pkg" != "$VERSION" ]; then
+            echo "package.json is $pkg, input is $VERSION" >&2; exit 1
+          fi
+          awk -v v="$VERSION" 'index($0, "## [" v "]") == 1 {f=1; next} /^## \[/ {if (f) exit} f' \
+            CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "No '## [$VERSION]' section in CHANGELOG.md" >&2; exit 1
+          fi
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" --notes-file notes.md
