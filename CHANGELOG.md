@@ -33,6 +33,14 @@ Newest first. Each entry records WHY, not just WHAT. Past entries are never edit
   because none have been measured yet.
 
 ### Changed
+- Delegation policy: three rules from a user-supplied review, merged into the existing bullets
+  instead of appended: keep using helpers when only one model fails (name it once); `ask_agent`
+  `model: "all"` costs N× the calls; an image call can take 30–120 s, so wait instead of calling
+  again. "Default to fallback mode" was left out because it is already the tool default, and
+  "only when ≥2 image models are healthy" because Claude cannot see model health before calling.
+  WHY: `CLAUDE.md` is loaded in every session, so each added line costs tokens on every turn; only
+  rules that change Claude's behaviour were kept. The "~1 min" figure was replaced with the
+  30–120 s range the README already documents.
 - **`generate_images` default changed from parallel fan-out to ordered fallback**: models in
   `OAC_IMAGE_MODELS` are tried one after another and the first that returns an image wins.
   `judge: true` or `OAC_IMAGE_JUDGE=true` brings back the old behaviour (all models in parallel,
