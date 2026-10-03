@@ -17,6 +17,9 @@ import path from 'node:path';
  *     Replaced NINEROUTER_* / CODEX_* / ANTIGRAVITY_* with generic OAC_* vars, helpers became
  *     ordered model-id lists, search/fetch endpoints became opt-in, and the base URL has no
  *     default (a user-specific port is a wrong default for everyone else).
+ *   [2026-10-03 12] [Added] - OAC_IMAGE_JUDGE (default false): user asked for image models to run
+ *     as an ordered fallback by default and only fan out + judge when explicitly enabled, since
+ *     one image per request is what most chores need and every extra model costs a generation.
  */
 export function loadConfig(env = process.env) {
   const int = (v, d) => {
@@ -36,8 +39,10 @@ export function loadConfig(env = process.env) {
     // Ordered: `ask_agent auto` and page digests try them in this order (failover).
     // Empty => one chat model is auto-picked from GET /models (see models.mjs).
     textModels: list(env.OAC_TEXT_MODELS),
-    // Every listed model draws in parallel; Claude picks the best candidate.
+    // Ordered. Default: fallback (first model that succeeds wins). OAC_IMAGE_JUDGE=true: every
+    // listed model draws in parallel and a helper vision model ranks the candidates.
     imageModels: list(env.OAC_IMAGE_MODELS),
+    imageJudge: /^(1|true|yes|on)$/i.test((env.OAC_IMAGE_JUDGE ?? '').trim()),
     // Vision-capable chat model used by generate_images review="judge". Empty => first text model.
     judgeModel: env.OAC_JUDGE_MODEL || '',
     // Optional native search endpoint (e.g. 9router POST /v1/search). `model` = provider id.

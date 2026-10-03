@@ -9,9 +9,14 @@
  *   [2026-10-03 07] [Updated] - Added --fetch smoke test for the new web_fetch tool.
  *   [2026-10-03 09] [Updated] - Vendor-neutral probes (Node.js release query, example.com) and
  *     OAC_* wording, since 9router is only one possible backend; exits 1 if any probe fails.
+ *   [2026-10-03 12] [Updated] - Prints which OAC_* vars are set (never their values) and
+ *     ready-to-paste model lists from GET /models, so a user (or their Claude) can finish setup
+ *     knowing only the base URL and key.
  */
 import { createContext } from '../src/context.mjs';
 import { TOOLS } from '../src/tools/index.mjs';
+import { envStatus } from '../src/init.mjs';
+import { suggestModels } from '../src/models.mjs';
 
 const ctx = createContext();
 const flags = new Set(process.argv.slice(2));
@@ -24,8 +29,17 @@ const probe = async (label, name, args) => {
   console.log(`\n[${label}]${r.isError ? ' FAILED' : ''}\n${r.text}`);
 };
 
-console.log(`API key: ${ctx.config.apiKey ? 'set' : 'not set'}`);
+console.log(`Environment (values hidden): ${envStatus()}`);
 console.log((await tool('list_helper_models').handler(ctx)).text);
+
+const suggested = suggestModels(ctx.models.available);
+const tips = [];
+if (!ctx.config.textModels.length && suggested.text.length) tips.push(`OAC_TEXT_MODELS=${suggested.text.join(',')}`);
+if (!ctx.config.imageModels.length && suggested.images.length) tips.push(`OAC_IMAGE_MODELS=${suggested.images.join(',')}`);
+if (tips.length) {
+  console.log('\nSuggested from GET /models (order = failover order; reorder to taste, then set them where OAC_BASE_URL is set):');
+  for (const t of tips) console.log(`  ${t}`);
+}
 
 if (flags.has('--text')) await probe('ask_agent all', 'ask_agent', { prompt: 'Reply with exactly: pong', model: 'all' });
 if (flags.has('--search')) await probe('web_search', 'web_search', { query: 'What is the current Node.js LTS version?' });

@@ -35,8 +35,9 @@ spend their tokens and Claude saves its own.
   With an MCP server, Claude keeps the controls and only calls helpers when it decides to.
 - **Fewer Claude tokens.** Helpers read the long pages, search results and drafts. Claude only gets
   a short digest, capped by `OAC_MAX_RESULT_CHARS`.
-- **Several image models compete.** One brief goes to every image model you configured, in
-  parallel. Claude picks the best result, or a cheap vision model ranks them first.
+- **Image models with fallback or competition.** By default the image models are tried in order
+  and the first success is used. Turn on judge mode and they all draw in parallel while a cheap
+  vision model ranks the results.
 - **Not tied to a backend.** It talks standard OpenAI endpoints. Models are plain ids from your
   config, so you can mix vendors behind one gateway.
 - **Nothing to install.** Run it with `npx -y github:HTB95/open-agent-connector`. It has no
@@ -49,18 +50,28 @@ spend their tokens and Claude saves its own.
 | `ask_agent` | Hands a self-contained text task to a helper. `model: "auto"` tries `OAC_TEXT_MODELS` in order and moves to the next on failure. `"all"` runs every model in parallel so Claude can compare. You can also pass an exact model id. | `POST /chat/completions` |
 | `web_search` | Runs a live search and returns a short answer with source URLs. | Native search endpoint (opt-in) → Responses API `web_search` tool (opt-in) → if both are unavailable, an answer from model knowledge, clearly labelled `⚠️ NOT A LIVE SEARCH` |
 | `web_fetch` | Reads a URL. If you pass `question`, a helper reads the whole page and Claude gets only the answer. | Native fetch endpoint (opt-in), otherwise a local fetch, then `POST /chat/completions` |
-| `generate_images` | Sends one brief to every model in `OAC_IMAGE_MODELS` in parallel and saves every candidate to disk. | `POST /images/generations` (+ `/chat/completions` for `review: "judge"`) |
+| `generate_images` | Generates images and saves them to disk. Default: tries `OAC_IMAGE_MODELS` in order and stops at the first success. With `judge: true` (or `OAC_IMAGE_JUDGE=true`) every model draws in parallel and a helper ranks the candidates. | `POST /images/generations` (+ `/chat/completions` for the judge) |
 | `list_helper_models` | Shows the configured roles and the model ids the backend advertises. | `GET /models` |
 
 The `review` option of `generate_images` controls how Claude sees the candidates:
 
-- `paths` (default): you get file paths, and Claude opens the ones it wants with its Read tool.
-- `judge`: a vision-capable helper scores the candidates first, so Claude reads a short ranking. This is the cheapest option.
+- `paths` (default in fallback mode): you get file paths, and Claude opens the ones it wants with its Read tool.
+- `judge` (default in judge mode): a vision-capable helper scores the candidates first, so Claude reads a short ranking.
 - `inline`: the images are embedded in the tool result. This uses the most tokens.
 
 ## Quick start
 
 Requirements: **Node.js ≥ 18.17**, **git**, and an OpenAI-compatible endpoint with an API key.
+
+**Let Claude do it.** Set `OAC_BASE_URL` and `OAC_API_KEY` yourself (never paste the key into the
+chat), then tell Claude Code:
+
+> Set up open-agent-connector in this project by following
+> https://github.com/HTB95/open-agent-connector/blob/main/docs/AGENT_SETUP.md
+
+Claude runs `init`, lets `doctor` suggest model ids from your backend, smoke-tests and commits.
+
+**Or by hand:**
 
 ```bash
 # 1. Point the connector at your backend (example: OpenAI directly)
@@ -70,7 +81,8 @@ export OAC_TEXT_MODELS="gpt-5-mini"
 export OAC_IMAGE_MODELS="gpt-image-1"
 export OAC_SEARCH_MODEL="gpt-5-mini"
 
-# 2. Smoke-test the backend outside Claude (costs no Claude tokens)
+# 2. Smoke-test the backend outside Claude (costs no Claude tokens).
+#    With only BASE_URL and API_KEY set, doctor prints suggested OAC_TEXT_MODELS / OAC_IMAGE_MODELS.
 npx -y github:HTB95/open-agent-connector doctor --text --search --fetch --image
 
 # 3. Wire a project (writes .mcp.json, .claude/settings.json, CLAUDE.md, .gitignore)
@@ -81,8 +93,8 @@ git add -A && git commit -m "Wire Claude helpers"
 
 Restart Claude Code and run `/mcp`. You should see `helpers · connected`. Then try:
 
-> Create a hero image for a coffee-shop landing page using all helper image models, review with
-> judge, and copy the best one to `public/hero.png`.
+> Create a hero image for a coffee-shop landing page with the helpers and copy it to
+> `public/hero.png`.
 
 For per-user install, Claude Code on the web (cloud), Claude Desktop and troubleshooting, see
 **[docs/SETUP.md](docs/SETUP.md)**.
@@ -97,7 +109,8 @@ All settings are environment variables. `init` writes a `.mcp.json` that forward
 | `OAC_BASE_URL` | **required** | OpenAI-compatible base URL, including `/v1` (for example `http://localhost:4000/v1`). |
 | `OAC_API_KEY` | _(empty)_ | Sent as `Authorization: Bearer …`. Leave empty for backends without auth. |
 | `OAC_TEXT_MODELS` | auto-pick | Comma-separated chat model ids. `ask_agent auto` and page digests try them in this order and fail over to the next. If empty, the first id from `GET /models` that doesn't look like an image, audio or embedding model is used. |
-| `OAC_IMAGE_MODELS` | _(empty)_ | Comma-separated image model ids. All of them draw in parallel. `generate_images` stays disabled until this is set. |
+| `OAC_IMAGE_MODELS` | _(empty)_ | Comma-separated image model ids, in fallback order. `generate_images` stays disabled until this is set. |
+| `OAC_IMAGE_JUDGE` | `false` | `true` = judge mode: every image model draws in parallel and the judge ranks them (one generation per model). `false` = try the models in order and use the first success. The tool's `judge` argument overrides it per call. |
 | `OAC_JUDGE_MODEL` | first text model | Vision-capable chat model used by `review: "judge"`. |
 | `OAC_SEARCH_PROVIDERS` | _(empty)_ | Provider ids for a **native** search endpoint (`POST {base}/search` with `{model, query, max_results}`), tried in order. Example: 9router's `antigravity`. |
 | `OAC_SEARCH_PATH` | `/search` | Path of that native search endpoint. |
@@ -189,23 +202,27 @@ OAC_TEXT_MODELS=qwen3:8b
 1. **Digest, don't dump.** `web_search` and `web_fetch` with `question` return a short answer, not
    the raw page.
 2. **Hard cap.** Every tool result is cut at `OAC_MAX_RESULT_CHARS`, with a note that it was cut.
-3. **Cheap judging.** `review: "judge"` turns N images into a few lines of text, so Claude doesn't
-   have to view each image.
+3. **One image by default, cheap judging when asked.** Fallback mode pays for one generation per
+   request. In judge mode, `review: "judge"` turns N images into a few lines of text, so Claude
+   doesn't have to view each image.
 4. **A delegation policy.** `init` adds a short policy to `CLAUDE.md` telling Claude *when* to
    delegate. Without one, Claude rarely calls helper tools on its own.
 5. **Small tool surface.** Five tools with short schemas, because tool definitions are re-sent on
    every turn.
 
-### When it pays off
+### Who does what
 
-Delegating has a cost too: Claude still writes the prompt and reads the answer. It pays off when
-the helper's share of the work is much bigger than that, for example:
+The policy splits work by kind, not by size:
 
-| Worth delegating | Do it yourself |
+| Helpers (information gathering, production) | Claude (code and reasoning) |
 |---|---|
-| Summarising a long page, a changelog or search results | A fact you already know |
-| Generating and ranking several images | Edits of a few lines |
-| Brainstorming or drafting large boilerplate | Anything that needs the repo's context |
+| Web search, finding and reading docs | Reading and writing code |
+| Summarising long pages, changelogs, search results | Debugging, design, architecture |
+| Translating, drafting prose, test-data boilerplate | Reviewing and deciding what to keep |
+| Generating images | Anything that needs the repo's context |
+
+Delegating still has a cost: Claude writes the prompt and reads the answer. So the one exception is
+work where the prompt costs more than the job, such as a fact Claude already knows.
 
 No measured before/after numbers are published yet. When the backend reports usage, `ask_agent`
 prints each helper's token in/out next to its answer, so you can compare a delegated task against
@@ -216,8 +233,8 @@ doing it in Claude. If you measure real savings, a PR with the numbers and the m
 There are other MCP servers that let Claude ask another model for an opinion, and routers that
 swap the model behind Claude Code. This project focuses on chores rather than second opinions:
 
-- **Image generation with several models in parallel**, with an optional judge model so Claude
-  only opens the top one or two images.
+- **Image generation with model fallback**, or several models in parallel with a judge model so
+  Claude only opens the top one or two images.
 - **`web_fetch` with a `question`**: the helper reads the page and Claude only gets the answer.
 - **Model ids per role** (`text`, `image`, `judge`, `search`) on any OpenAI-compatible gateway.
 - **A ready delegation policy** that `init` writes into `CLAUDE.md`, plus a one-command setup

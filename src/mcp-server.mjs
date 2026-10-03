@@ -4,7 +4,8 @@ export const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11
 
 export const SERVER_INSTRUCTIONS =
   'Helper models behind this server are cheaper (often free) for the user; Claude tokens are not. ' +
-  'You are the lead: delegate chores (web lookups, summaries, boilerplate drafts, image generation) to these tools, ' +
+  'You are the lead: keep code and reasoning work yourself; delegate information gathering and production ' +
+  '(web search, reading docs/pages, summaries, translations, drafts, image generation) to these tools, ' +
   'then verify and decide. Never delegate final architectural decisions or edits to the repo, ' +
   'and never put secrets (keys, tokens, .env contents) in a helper prompt.';
 
@@ -19,6 +20,8 @@ export const SERVER_INSTRUCTIONS =
  *   [2026-10-03 09] [Updated] - SERVER_INSTRUCTIONS made vendor-neutral for the open-source release.
  *   [2026-10-03 11] [Updated] - SERVER_INSTRUCTIONS: no secrets in helper prompts (user feedback;
  *     prompts leave the machine for third-party models, also in repos without the CLAUDE.md policy).
+ *   [2026-10-03 12] [Updated] - SERVER_INSTRUCTIONS states the split the user intends: code and
+ *     reasoning stay with Claude, information gathering and production go to helpers.
  */
 export class McpServer {
   constructor({ name, version, tools, ctx, input = process.stdin, output = process.stdout, log = console.error }) {

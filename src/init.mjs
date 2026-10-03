@@ -14,11 +14,24 @@ export const PASSTHROUGH_ENV = [
   'OAC_API_KEY',
   'OAC_TEXT_MODELS',
   'OAC_IMAGE_MODELS',
+  'OAC_IMAGE_JUDGE',
   'OAC_JUDGE_MODEL',
   'OAC_SEARCH_PROVIDERS',
   'OAC_SEARCH_MODEL',
   'OAC_FETCH_PROVIDERS',
 ];
+
+/**
+ * @SecondBrain
+ * @Description One-line summary of which OAC_* vars are set, e.g.
+ *   `OAC_BASE_URL ✓ · OAC_API_KEY ✗ · ...`. Never prints values, so it is safe to show in chat.
+ * @History:
+ *   [2026-10-03 12] [Created] - Lets init/doctor (and a user's Claude running them) see what is
+ *     missing without anyone pasting a key into the conversation.
+ */
+export function envStatus(env = process.env, keys = PASSTHROUGH_ENV) {
+  return keys.map((k) => `${k} ${env[k]?.trim() ? '✓' : '✗'}`).join(' · ');
+}
 
 /**
  * @SecondBrain
@@ -106,8 +119,10 @@ async function readOrNull(file) {
  * @History:
  *   [2026-10-03 08] [Created] - One command per project instead of hand-editing four files.
  *   [2026-10-03 09] [Updated] - Next-step hint lists the generic OAC_* vars.
+ *   [2026-10-03 12] [Updated] - Prints which vars are set/missing and the doctor command, so the
+ *     next step is concrete for a user or for their Claude following docs/AGENT_SETUP.md.
  */
-export async function runInit(argv = [], { cwd = process.cwd(), log = console.log } = {}) {
+export async function runInit(argv = [], { cwd = process.cwd(), log = console.log, env = process.env } = {}) {
   const opt = (name) => {
     const i = argv.indexOf(name);
     return i !== -1 ? argv[i + 1] : undefined;
@@ -137,6 +152,11 @@ export async function runInit(argv = [], { cwd = process.cwd(), log = console.lo
   log(`open-agent-connector: wired ${dir}`);
   for (const f of touched) log(`  updated ${f}`);
   log(local ? `  server: node ${SERVER_FILE}` : `  server: npx -y ${spec}`);
-  log('Next: set OAC_BASE_URL, OAC_API_KEY, OAC_TEXT_MODELS (and OAC_IMAGE_MODELS for images) in your environment, then start Claude Code.');
+  log(`Environment (values hidden): ${envStatus(env)}`);
+  if (!env.OAC_BASE_URL?.trim()) {
+    log('Next: set OAC_BASE_URL and OAC_API_KEY in your shell profile (local) or the environment settings (cloud).');
+  }
+  log(`Then: ${local ? `node ${SERVER_FILE}` : `npx -y ${spec}`} doctor   (suggests OAC_TEXT_MODELS / OAC_IMAGE_MODELS from your backend)`);
+  log('Finally: start a NEW Claude Code session (env vars are read at session start).');
   return touched;
 }

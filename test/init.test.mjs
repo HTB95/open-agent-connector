@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { buildServerEntry, mergeMcpJson, mergeSettings, runInit, upsertPolicy } from '../src/init.mjs';
+import { buildServerEntry, envStatus, mergeMcpJson, mergeSettings, runInit, upsertPolicy } from '../src/init.mjs';
 
 test('server entry never contains secrets and uses env expansion', () => {
   const e = buildServerEntry();
@@ -47,4 +47,17 @@ test('runInit wires a project end-to-end and can be re-run', async () => {
   assert.equal(await readFile(path.join(dir, '.gitignore'), 'utf8'), 'node_modules/\n.generated-images/\n');
   const again = await runInit([], { cwd: dir, log: () => {} });
   assert.ok(!again.includes('.gitignore'));
+});
+
+test('envStatus reports set/missing vars without leaking values; init prints next steps', async () => {
+  const line = envStatus({ OAC_BASE_URL: 'http://x', OAC_API_KEY: 'sk-secret', OAC_TEXT_MODELS: ' ' });
+  assert.match(line, /OAC_BASE_URL ✓ · OAC_API_KEY ✓ · OAC_TEXT_MODELS ✗/);
+  assert.doesNotMatch(line, /sk-secret|http:\/\/x/);
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'oac-init-'));
+  const out = [];
+  await runInit([], { cwd: dir, log: (l) => out.push(l), env: { OAC_API_KEY: 'sk-secret' } });
+  const text = out.join('\n');
+  assert.doesNotMatch(text, /sk-secret/);
+  assert.match(text, /Next: set OAC_BASE_URL/);
+  assert.match(text, /npx -y github:HTB95\/open-agent-connector doctor/);
 });

@@ -114,25 +114,60 @@ export async function judgeImages(ctx, prompt, candidates, criteria) {
 
 /**
  * @SecondBrain
- * @Description MCP tool `generate_images`: fans one brief out to every configured image model
- *   in parallel, saves every candidate to disk and lets Claude pick the winner
- *   (review=paths: Claude views files with Read; judge: helper pre-ranks; inline: images
- *   returned in the tool result).
+ * @Description Generates `n` images with one model (in parallel) and saves them. Returns
+ *   `{ candidates, failures }`; never throws for a provider error.
+ * @History:
+ *   [2026-10-03 12] [Extracted] - Shared by the fallback and judge (fan-out) modes.
+ */
+async function drawWithModel(ctx, args, model, n, outDir, stamp) {
+  const jobs = Array.from({ length: n }, (_, i) => ({ model, i }));
+  const settled = await Promise.allSettled(
+    jobs.map(async (job) => {
+      const t0 = Date.now();
+      const { buf } = await generateImage(ctx, args, job.model);
+      if (!buf.length) throw new Error('empty image');
+      const { mime, ext } = sniffImage(buf);
+      const slug = job.model.replace(/[^\w.-]+/g, '_');
+      const file = path.join(outDir, `${stamp}-${slug}-${job.i + 1}.${ext}`);
+      await writeFile(file, buf);
+      return { ...job, mime, file, buf, bytes: buf.length, ms: Date.now() - t0 };
+    }),
+  );
+  const candidates = [];
+  const failures = [];
+  settled.forEach((s, k) => {
+    if (s.status === 'fulfilled') candidates.push(s.value);
+    else failures.push(`${jobs[k].model}#${jobs[k].i + 1}: ${s.reason?.message ?? s.reason}`);
+  });
+  return { candidates, failures };
+}
+
+/**
+ * @SecondBrain
+ * @Description MCP tool `generate_images`. Default (judge off): tries OAC_IMAGE_MODELS in order
+ *   and stops at the first model that returns an image (fallback). Judge on (`judge: true` or
+ *   OAC_IMAGE_JUDGE=true): every model draws in parallel and a helper vision model pre-ranks the
+ *   candidates. Files are saved to disk; review=paths lets Claude open them with Read, inline
+ *   embeds them in the result.
  * @History:
  *   [2026-10-03 06] [Created] - User's headline feature: both providers draw, Claude chooses.
  *   [2026-10-03 07] [Updated] - Jobs planned per model (CODEX_IMAGE_MODELS x n + Antigravity
  *     image model x n); added background/output_format; file names include the model.
  *   [2026-10-03 09] [Changed] - `providers`/`n_per_provider` renamed to `models`/`n_per_model`;
  *     models come from OAC_IMAGE_MODELS so any number of backends/vendors can compete.
+ *   [2026-10-03 12] [Changed] - User asked for a judge on/off switch defaulting to off: fan-out
+ *     multiplied image cost by the number of models for every request, while most requests need
+ *     one usable image. Off = ordered fallback; `judge`/OAC_IMAGE_JUDGE restores fan-out + ranking.
  */
 export const generateImagesTool = {
   definition: {
     name: 'generate_images',
     description:
-      'Generate images with every configured image model in parallel (OAC_IMAGE_MODELS), save candidates to disk, and ' +
-      'return them for you (Claude) to choose the best. review: "paths" (default; open chosen files with Read), ' +
-      '"judge" (a helper vision model pre-ranks — cheapest), "inline" (images embedded in this result). ' +
-      'Copy the winner into the project yourself afterwards.',
+      'Generate images and save them to disk. Default: OAC_IMAGE_MODELS are tried in order and the first model that ' +
+      'succeeds is used (fallback). judge=true: every model draws in parallel and a helper vision model ranks the ' +
+      'candidates (costs one generation per model). review: "paths" (open files with Read), "judge" (helper ' +
+      'pre-ranks; default when judge=true), "inline" (images embedded in this result). ' +
+      'Copy the chosen file into the project yourself afterwards.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -140,7 +175,11 @@ export const generateImagesTool = {
         models: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Optional subset of image model ids (default: all of OAC_IMAGE_MODELS).',
+          description: 'Optional ordered subset of image model ids (default: OAC_IMAGE_MODELS).',
+        },
+        judge: {
+          type: 'boolean',
+          description: 'true = all models draw in parallel + helper ranking; false = ordered fallback. Default: OAC_IMAGE_JUDGE (false).',
         },
         n_per_model: { type: 'integer', minimum: 1, maximum: 4, default: 1, description: 'Images per model.' },
         size: { type: 'string', enum: ['auto', '1024x1024', '1536x1024', '1024x1536'], default: 'auto' },
@@ -157,7 +196,11 @@ export const generateImagesTool = {
           description: 'OpenAI-style models only.',
         },
         output_format: { type: 'string', enum: ['png', 'jpeg', 'webp'], description: 'OpenAI-style models only.' },
-        review: { type: 'string', enum: ['paths', 'judge', 'inline'], default: 'paths' },
+        review: {
+          type: 'string',
+          enum: ['paths', 'judge', 'inline'],
+          description: 'Default: "judge" when judge=true, otherwise "paths".',
+        },
         judge_criteria: { type: 'string', description: 'Optional criteria for review=judge.' },
         out_dir: { type: 'string', description: 'Directory for candidates (default OAC_IMAGE_OUT_DIR).' },
       },
@@ -173,33 +216,37 @@ export const generateImagesTool = {
       return { text: 'No image models configured. Set OAC_IMAGE_MODELS (comma-separated model ids).', isError: true };
     }
     const n = Math.min(Math.max(args.n_per_model ?? 1, 1), 4);
-    const review = args.review || 'paths';
+    const judgeMode = args.judge ?? ctx.config.imageJudge;
+    const review = args.review || (judgeMode ? 'judge' : 'paths');
     const outDir = path.resolve(args.out_dir || ctx.config.imageOutDir);
     await mkdir(outDir, { recursive: true });
-
-    const jobs = models.flatMap((model) => Array.from({ length: n }, (_, i) => ({ model, i })));
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const settled = await Promise.allSettled(
-      jobs.map(async (job) => {
-        const t0 = Date.now();
-        const { buf } = await generateImage(ctx, args, job.model);
-        if (!buf.length) throw new Error('empty image');
-        const { mime, ext } = sniffImage(buf);
-        const slug = job.model.replace(/[^\w.-]+/g, '_');
-        const file = path.join(outDir, `${stamp}-${slug}-${job.i + 1}.${ext}`);
-        await writeFile(file, buf);
-        return { ...job, mime, file, buf, bytes: buf.length, ms: Date.now() - t0 };
-      }),
-    );
 
-    const candidates = [];
+    const found = [];
     const failures = [];
-    settled.forEach((s, k) => {
-      if (s.status === 'fulfilled') candidates.push({ id: `c${candidates.length + 1}`, ...s.value });
-      else failures.push(`${jobs[k].model}#${jobs[k].i + 1}: ${s.reason?.message ?? s.reason}`);
-    });
+    let planned = 0;
+    if (judgeMode) {
+      planned = models.length * n;
+      const runs = await Promise.all(models.map((model) => drawWithModel(ctx, args, model, n, outDir, stamp)));
+      for (const r of runs) {
+        found.push(...r.candidates);
+        failures.push(...r.failures);
+      }
+    } else {
+      planned = n;
+      for (const model of models) {
+        const r = await drawWithModel(ctx, args, model, n, outDir, stamp);
+        found.push(...r.candidates);
+        failures.push(...r.failures);
+        if (r.candidates.length) break;
+      }
+    }
+    const candidates = found.map((c, k) => ({ id: `c${k + 1}`, ...c }));
 
-    const lines = [`Brief: ${args.prompt}`, `Candidates (${candidates.length}/${jobs.length}) saved in ${outDir}:`];
+    const mode = judgeMode
+      ? `judge (${models.length} models in parallel)`
+      : 'fallback (first model that succeeds; judge=true compares all models)';
+    const lines = [`Brief: ${args.prompt}`, `Mode: ${mode}`, `Candidates (${candidates.length}/${planned}) saved in ${outDir}:`];
     for (const c of candidates) {
       lines.push(`- ${c.id} · ${c.model} · ${(c.bytes / 1024).toFixed(0)} KB · ${c.ms}ms · ${c.file}`);
     }

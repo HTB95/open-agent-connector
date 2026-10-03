@@ -21,6 +21,24 @@ export function pickDefaultTextModel(ids) {
   return ids.find((id) => !NON_CHAT_MODEL.test(id)) ?? null;
 }
 
+export const IMAGE_MODEL = /image|dall-e|imagen|flux|stable-diffusion|sdxl/i;
+
+/**
+ * @SecondBrain
+ * @Description Proposes OAC_TEXT_MODELS / OAC_IMAGE_MODELS values from the ids GET /models
+ *   advertises: up to `max` chat-looking ids and up to `max` image-looking ids, in the order the
+ *   backend lists them. A starting point for the user to reorder, not a quality ranking.
+ * @History:
+ *   [2026-10-03 12] [Created] - User asked for an easier setup that their own Claude can do:
+ *     `doctor` now prints ready-to-paste model lists, so only the URL and key must be known.
+ */
+export function suggestModels(ids, max = 3) {
+  return {
+    text: ids.filter((id) => !NON_CHAT_MODEL.test(id) && !IMAGE_MODEL.test(id)).slice(0, max),
+    images: ids.filter((id) => IMAGE_MODEL.test(id)).slice(0, max),
+  };
+}
+
 /**
  * @SecondBrain
  * @Description Returns the configured ids that GET /models does not advertise. Returns [] when

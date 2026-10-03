@@ -9,6 +9,7 @@
         "OAC_API_KEY": "${OAC_API_KEY:-}",
         "OAC_TEXT_MODELS": "${OAC_TEXT_MODELS:-}",
         "OAC_IMAGE_MODELS": "${OAC_IMAGE_MODELS:-}",
+        "OAC_IMAGE_JUDGE": "${OAC_IMAGE_JUDGE:-}",
         "OAC_JUDGE_MODEL": "${OAC_JUDGE_MODEL:-}",
         "OAC_SEARCH_PROVIDERS": "${OAC_SEARCH_PROVIDERS:-}",
         "OAC_SEARCH_MODEL": "${OAC_SEARCH_MODEL:-}",

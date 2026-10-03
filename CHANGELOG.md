@@ -5,6 +5,16 @@ Newest first. Each entry records WHY, not just WHAT. Past entries are never edit
 ## [Unreleased]
 
 ### Added
+- `OAC_IMAGE_JUDGE` (default `false`) and a `judge` argument on `generate_images`.
+  WHY: the user asked for a judge on/off switch defaulting to off. See "Changed" for the new
+  default behaviour.
+- `doctor` prints which `OAC_*` variables are set (✓/✗, never the values) and, when
+  `OAC_TEXT_MODELS` / `OAC_IMAGE_MODELS` are empty, ready-to-paste lists built from `GET /models`.
+  `init` prints the same status plus the next commands. New `docs/AGENT_SETUP.md` is a runbook a
+  user's own Claude can follow ("set up open-agent-connector by following …").
+  WHY: the user asked for a setup that is easy enough to hand to Claude. With the suggestions, the
+  only values a person must know are the base URL and the key, and the key never has to go
+  through the chat.
 - `list_helper_models` (and so `doctor`) warns about configured model ids that `GET /models`
   does not advertise.
   WHY: user feedback. `OAC_TEXT_MODELS` held `ag/gemini-2.5-flash` while the gateway only exposed
@@ -23,6 +33,19 @@ Newest first. Each entry records WHY, not just WHAT. Past entries are never edit
   because none have been measured yet.
 
 ### Changed
+- **`generate_images` default changed from parallel fan-out to ordered fallback**: models in
+  `OAC_IMAGE_MODELS` are tried one after another and the first that returns an image wins.
+  `judge: true` or `OAC_IMAGE_JUDGE=true` brings back the old behaviour (all models in parallel,
+  `review` defaults to `"judge"`). Without judge mode, `review` defaults to `"paths"`.
+  WHY: the user asked for it. Fan-out paid for one generation per model on every request, while
+  most requests need one usable image; fallback also keeps working when a model is down.
+  Callers that relied on fan-out must now pass `judge: true`. Nothing was renamed.
+- Delegation policy and server instructions now split work by kind: code and reasoning stay with
+  Claude, information gathering and production (search, docs, page digests, translation, drafts,
+  images) go to helpers. The old "don't delegate < ~5 lines of work" rule became a narrower
+  exception: skip delegation only when writing the prompt costs more than the job.
+  WHY: the user pointed out that "short task" was the wrong axis; the project exists so that
+  non-code, non-reasoning work leaves Claude.
 - Delegation policy (`examples/CLAUDE.md`, written by `init`):
   - for current facts, discard a `NOT A LIVE SEARCH` result and use Claude's own search
   - images: helper drafts the prompt, `review: "judge"`, then a trademark/character/real-person
@@ -35,6 +58,9 @@ Newest first. Each entry records WHY, not just WHAT. Past entries are never edit
   parameter was renamed (the user asked to avoid renames). Re-run `init` to refresh the policy.
 
 ### Verified
+- `npm test`: 27/27 pass against the mock gateway (new: fallback order, `OAC_IMAGE_JUDGE` and
+  per-call override, `suggestModels`, `envStatus` not leaking values). `doctor` was run by hand
+  against the mock gateway and printed the suggested lists. Not run against a real gateway.
 - `npm test`: 23/23 pass against the mock gateway. The proxy hints are tested with synthetic
   status codes, not against a real proxy.
 

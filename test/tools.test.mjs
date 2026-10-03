@@ -4,7 +4,7 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createContext } from '../src/context.mjs';
-import { pickDefaultTextModel, unadvertised } from '../src/models.mjs';
+import { pickDefaultTextModel, suggestModels, unadvertised } from '../src/models.mjs';
 import { isOpenAiStyleImageModel } from '../src/tools/images.mjs';
 import { gatewayHint, parseSse } from '../src/router-client.mjs';
 import { clip } from '../src/tools/text.mjs';
@@ -162,10 +162,10 @@ test('web_fetch uses OAC_FETCH_PROVIDERS when configured, rejects bad urls', asy
   }
 });
 
-test('generate_images fans out to every image model via images API and saves files', async () => {
-  const { router, ctx, outDir } = await setup();
+test('generate_images judge=true fans out to every image model via images API and saves files', async () => {
+  const { router, ctx, outDir } = await setup({ fail: new Set(['judge']) });
   try {
-    const r = await tool('generate_images').handler(ctx, { prompt: 'cat', n_per_model: 2, quality: 'high', background: 'transparent' });
+    const r = await tool('generate_images').handler(ctx, { prompt: 'cat', judge: true, n_per_model: 2, quality: 'high', background: 'transparent' });
     assert.ok(!r.isError, r.text);
     assert.match(r.text, /Candidates \(4\/4\)/);
     const files = [...r.text.matchAll(/(\/\S+\.png)/g)].map((m) => m[1]);
@@ -193,7 +193,7 @@ test('generate_images: three models, judge ranks, inline embeds a subset', async
     OAC_IMAGE_MODELS: 'cx/gpt-image-2.5,cx/gpt-5.6-luna-image,ag/gemini-3.1-flash-image',
   });
   try {
-    const judged = await tool('generate_images').handler(ctx, { prompt: 'cat', review: 'judge' });
+    const judged = await tool('generate_images').handler(ctx, { prompt: 'cat', judge: true });
     assert.match(judged.text, /Candidates \(3\/3\)/);
     assert.match(judged.text, /gpt-5\.6-luna-image/);
     assert.match(judged.text, /c2 score 9: cleaner/);
@@ -202,6 +202,49 @@ test('generate_images: three models, judge ranks, inline embeds a subset', async
   } finally {
     await router.close();
   }
+});
+
+test('generate_images defaults to ordered fallback: stops at the first model that succeeds', async () => {
+  const { router, ctx } = await setup({ fail: new Set(['images-cx']) });
+  try {
+    const r = await tool('generate_images').handler(ctx, { prompt: 'cat' });
+    assert.ok(!r.isError, r.text);
+    assert.match(r.text, /Mode: fallback/);
+    assert.match(r.text, /Candidates \(1\/1\)/);
+    assert.match(r.text, /c1 · ag\/gemini-3\.1-flash-image/);
+    assert.match(r.text, /cx\/gpt-image-2\.5#1: .*images cx down/);
+    assert.doesNotMatch(r.text, /Judge \(/);
+    const first = await tool('generate_images').handler(ctx, { prompt: 'cat', models: ['ag/gemini-3.1-flash-image', 'cx/gpt-image-2.5'] });
+    assert.match(first.text, /Candidates \(1\/1\)/);
+    const calls = router.calls.filter((c) => c.url === '/v1/images/generations').map((c) => c.body.model);
+    assert.deepEqual(calls, ['cx/gpt-image-2.5', 'ag/gemini-3.1-flash-image', 'ag/gemini-3.1-flash-image']);
+  } finally {
+    await router.close();
+  }
+});
+
+test('OAC_IMAGE_JUDGE=true turns fan-out + judge on by default; judge=false overrides it', async () => {
+  const { router, ctx } = await setup({}, { OAC_IMAGE_JUDGE: 'true' });
+  try {
+    assert.equal(ctx.config.imageJudge, true);
+    const judged = await tool('generate_images').handler(ctx, { prompt: 'cat' });
+    assert.match(judged.text, /Mode: judge \(2 models in parallel\)/);
+    assert.match(judged.text, /c2 score 9: cleaner/);
+    const single = await tool('generate_images').handler(ctx, { prompt: 'cat', judge: false });
+    assert.match(single.text, /Candidates \(1\/1\)/);
+  } finally {
+    await router.close();
+  }
+  assert.equal(createContext({ env: {} }).config.imageJudge, false);
+});
+
+test('suggestModels proposes text and image ids from GET /models', () => {
+  const ids = ['cx/gpt-5.4', 'text-embedding-3-small', 'ag/gemini-3.1-flash-image', 'kr/glm-5', 'dall-e-3', 'x/flux-1', 'y/a', 'z/b'];
+  assert.deepEqual(suggestModels(ids), {
+    text: ['cx/gpt-5.4', 'kr/glm-5', 'y/a'],
+    images: ['ag/gemini-3.1-flash-image', 'dall-e-3', 'x/flux-1'],
+  });
+  assert.deepEqual(suggestModels([]), { text: [], images: [] });
 });
 
 test('generate_images reports isError only when every model fails', async () => {

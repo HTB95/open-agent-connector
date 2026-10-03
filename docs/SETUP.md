@@ -8,7 +8,8 @@ don't need to clone it or run `npm install`. Wherever you use Claude, two things
 2. **The delegation policy in `CLAUDE.md`**. This tells Claude *when* to use the tools. Claude reads
    the file at the start of every session.
 
-The `init` command writes both into a project:
+To have Claude do the whole setup, point it at **[AGENT_SETUP.md](AGENT_SETUP.md)** (a runbook
+written for agents). The `init` command writes both into a project:
 
 ```bash
 cd your-project
@@ -150,7 +151,8 @@ instructions when it connects. Example requests:
 - *"Look up the breaking changes in the latest Next.js major using the helpers and summarise them."* → `web_search`
 - *"Read https://… with web_fetch and tell me the API rate limit."* → `web_fetch`
 - *"Generate 20 rows of test data with ask_agent (model all) and keep the better set."* → `ask_agent`
-- *"Make an app logo with every image model, two each, review judge, and copy the best to `public/logo.png`."* → `generate_images`
+- *"Make an app logo with the helpers and copy it to `public/logo.png`."* → `generate_images` (first image model that succeeds)
+- *"Make an app logo with every image model in judge mode, two each, and copy the best to `public/logo.png`."* → `generate_images` with `judge: true`
 
 In a repo that is **not** set up yet, paste this at the start of the session:
 
